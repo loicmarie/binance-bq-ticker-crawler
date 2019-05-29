@@ -1,0 +1,8 @@
+{
+  "DEFAULT": {
+    "BINANCE": {
+      "API_KEY": "<API_KEY>",
+      "SECRET_KEY": "<SECRET_KEY>"
+    }
+  }
+}
