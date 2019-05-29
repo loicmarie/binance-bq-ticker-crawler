@@ -149,8 +149,9 @@ class IndividualSymbolTickerStream(Stream):
         )]
 
 class PartialBookDepthStream(Stream):
-    def __init__(self, symbol, levels):
-        Stream.__init__(self, '%s@depth%d' % (symbol, levels), '%s_depth' % symbol)
+    def __init__(self, symbol, levels=None):
+        Stream.__init__(self, '%s@depth' % symbol + (str(levels) if levels is not None else ''), '%s_depth' % symbol)
+        self.levels = levels
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
             bigquery.SchemaField('price_level', 'FLOAT'),
@@ -159,19 +160,21 @@ class PartialBookDepthStream(Stream):
         ]
     def process(self, msg):
         data = []
+        bids_key = 'bids' if self.levels is not None else 'b'
+        asks_key = 'bids' if self.levels is not None else 'a'
         timestamp = time.time()
-        for i in range(len(msg['bids'])): # Bids to be updated
+        for i in range(len(msg[bids_key])): # Bids to be updated
             data += [(
                 timestamp,                # Event time
-                msg['bids'][i][0],        # Price level to be updated
-                msg['bids'][i][1],        # Quantity
+                msg[bids_key][i][0],        # Price level to be updated
+                msg[bids_key][i][1],        # Quantity
                 True                      # Is bid
             )]
-        for i in range(len(msg['asks'])): # Asks to be updated
+        for i in range(len(msg[asks_key])): # Asks to be updated
             data += [(
                 timestamp,                # Event time
-                msg['asks'][i][0],        # Price level to be updated
-                msg['asks'][i][1],        # Quantity
+                msg[asks_key][i][0],        # Price level to be updated
+                msg[asks_key][i][1],        # Quantity
                 False                     # Is bid
             )]
         return data
@@ -196,6 +199,6 @@ if __name__ == '__main__':
         TradeStream(symbol),
         IndividualSymbolTickerStream(symbol),
         IndividualSymbolMiniTickerStream(symbol),
-        PartialBookDepthStream(symbol, 5)
+        PartialBookDepthStream(symbol)
     ])
     manager.start()
