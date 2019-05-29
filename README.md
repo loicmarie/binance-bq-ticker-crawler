@@ -9,4 +9,4 @@ Tickers data crawler from Binance Exchange websockets API to Google Cloud Big Qu
 ## Run
 On a Google Compute Engine VM instance, run :
 
-`$ nohup monitor.sh &`
+`$ nohup ./monitor.sh &`
