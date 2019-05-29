@@ -23,7 +23,7 @@ def process_message(msg):
     for ticker in msg:
         if ticker['s'] == 'LTCBTC':
             data = [(
-                float(ticker['E']) // 10**9,
+                float(ticker['E']) // 10**3,
                 float(ticker['c']),
                 float(ticker['o']),
                 float(ticker['h']),
