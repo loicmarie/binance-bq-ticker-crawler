@@ -196,6 +196,6 @@ if __name__ == '__main__':
         TradeStream(symbol),
         IndividualSymbolTickerStream(symbol),
         IndividualSymbolMiniTickerStream(symbol),
-        PartialBookDepthStream(symbol, 20)
+        PartialBookDepthStream(symbol, 5)
     ])
     manager.start()
