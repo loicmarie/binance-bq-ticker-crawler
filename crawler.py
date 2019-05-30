@@ -243,10 +243,10 @@ class StreamsManager:
 if __name__ == '__main__':
     symbol = 'ltcbtc'
     manager = StreamsManager([
-        AggregateTradeStream(symbol),
-        TradeStream(symbol),
-        IndividualSymbolTickerStream(symbol),
-        IndividualSymbolMiniTickerStream(symbol),
+        AggregateTradeStream(symbol, create_table=True),
+        TradeStream(symbol, create_table=True),
+        IndividualSymbolTickerStream(symbol, create_table=True),
+        IndividualSymbolMiniTickerStream(symbol, create_table=True),
         KlineCandlestickStream(symbol, '1m', create_table=True)
     ])
     manager.start()
