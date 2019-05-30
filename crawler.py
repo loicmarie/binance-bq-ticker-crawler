@@ -9,23 +9,26 @@ with open('config.json', 'r') as f:
 
 BINANCE_API_KEY    = config['DEFAULT']['BINANCE']['API_KEY']
 BINANCE_SECRET_KEY = config['DEFAULT']['BINANCE']['SECRET_KEY']
+PROJECT_ID         = config['DEFAULT']['BQ']['PROJECT_ID']
+DATASET_ID         = config['DEFAULT']['BQ']['DATASET_ID']
 
 bq_client = bigquery.Client()
 client = Client(BINANCE_API_KEY, BINANCE_SECRET_KEY)
-dataset_id = 'binance_exchange'
 
 class Stream:
-    def __init__(self, name, table_id):
+    def __init__(self, name, table_id, create_table=False):
         self.name = name
         self.table_id = table_id
-        self.table = bq_client.dataset(dataset_id).table(self.table_id)
+        if create_table:
+            table = bigquery.Table('%s.%s.%s' % (PROJECT_ID, DATASET_ID, table_id), schema=self.schema)
+            self.table = bq_client.create_table(table)
+        else:
+            self.table = bq_client.dataset(DATASET_ID).table(self.table_id)
     def write_to_bq(self, data):
         errors = bq_client.insert_rows(self.table, data, selected_fields=self.schema)
-    def get_fields(self):
-        return []
+
 class AggregateTradeStream(Stream):
-    def __init__(self, symbol):
-        Stream.__init__(self, '%s@aggTrade' % symbol, '%s_agg_trade' % symbol)
+    def __init__(self, symbol, create_table=False):
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
             bigquery.SchemaField('agg_trade_id', 'INTEGER'),
@@ -36,6 +39,7 @@ class AggregateTradeStream(Stream):
             bigquery.SchemaField('trade_time', 'TIMESTAMP'),
             bigquery.SchemaField('is_buyer_market_maker', 'BOOLEAN')
         ]
+        Stream.__init__(self, '%s@aggTrade' % symbol, '%s_agg_trade' % symbol, create_table)
     def process(self, msg):
         return [(
             int(msg['E']) / 1000., # Event time
@@ -49,8 +53,7 @@ class AggregateTradeStream(Stream):
         )]
 
 class TradeStream(Stream):
-    def __init__(self, symbol):
-        Stream.__init__(self, '%s@trade' % symbol, '%s_trade' % symbol)
+    def __init__(self, symbol, create_table=False):
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
             bigquery.SchemaField('trade_id', 'INTEGER'),
@@ -61,6 +64,7 @@ class TradeStream(Stream):
             bigquery.SchemaField('trade_time', 'TIMESTAMP'),
             bigquery.SchemaField('is_buyer_market_maker', 'BOOLEAN')
         ]
+        Stream.__init__(self, '%s@trade' % symbol, '%s_trade' % symbol, create_table)
     def process(self, msg):
         return [(
             int(msg['E']) / 1000., # Event time
@@ -73,9 +77,52 @@ class TradeStream(Stream):
             msg['m'] == 'true'     # Is the buyer the market maker ?
         )]
 
+class KlineCandlestickStream(Stream):
+    def __init__(self, symbol, interval, create_table=False):
+        self.schema = [
+            bigquery.SchemaField('time', 'TIMESTAMP'),
+            bigquery.SchemaField('kline_start_time', 'TIMESTAMP'),
+            bigquery.SchemaField('kline_close_time', 'TIMESTAMP'),
+            bigquery.SchemaField('interval', 'STRING'),
+            bigquery.SchemaField('first_trade_id', 'INTEGER'),
+            bigquery.SchemaField('last_trade_id', 'INTEGER'),
+            bigquery.SchemaField('open_price', 'FLOAT'),
+            bigquery.SchemaField('close_price', 'FLOAT'),
+            bigquery.SchemaField('high_price', 'FLOAT'),
+            bigquery.SchemaField('low_price', 'FLOAT'),
+            bigquery.SchemaField('base_volume', 'FLOAT'),
+            bigquery.SchemaField('nb_trades', 'INTEGER'),
+            bigquery.SchemaField('is_closed', 'BOOLEAN'),
+            bigquery.SchemaField('quote_volume', 'FLOAT'),
+            bigquery.SchemaField('taker_buy_base_volume', 'FLOAT'),
+            bigquery.SchemaField('taker_buy_quote_volume', 'FLOAT')
+        ]
+        Stream.__init__(self, '%s@kline_%s' % (symbol, interval), '%s_kline_%s' % (symbol, interval), create_table)
+    def process(self, msg):
+        return [(
+            int(msg['E']) / 1000.,       # Event time
+            int(msg['k']['t']) / 1000.,  # Kline start time
+            int(msg['k']['T']) / 1000.,  # Kline close time
+            msg['k']['i'],               # Interval
+            msg['k']['f'],               # First trade ID
+            msg['k']['L'],               # Last trade ID
+            msg['k']['o'],               # Open price
+            msg['k']['c'],               # Close price
+            msg['k']['h'],               # High price
+            msg['k']['l'],               # Low price
+            msg['k']['v'],               # Base asset volume
+            msg['k']['n'],               # Number of trades
+            msg['k']['x'] == 'true',     # Is this kline closed ?
+            msg['k']['q'],               # Quote asset volume
+            msg['k']['V'],               # Taker buy base asset volume
+            msg['k']['Q']                # Taker buy quote asset volume
+            # msg['k']['B']              # Ignore
+        )]
+
+
+
 class IndividualSymbolMiniTickerStream(Stream):
-    def __init__(self, symbol):
-        Stream.__init__(self, '%s@miniTicker' % symbol, '%s_mini_ticker' % symbol)
+    def __init__(self, symbol, create_table=False):
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
             bigquery.SchemaField('close_price', 'FLOAT'),
@@ -85,6 +132,7 @@ class IndividualSymbolMiniTickerStream(Stream):
             bigquery.SchemaField('base_volume', 'FLOAT'),
             bigquery.SchemaField('quote_volume', 'FLOAT')
         ]
+        Stream.__init__(self, '%s@miniTicker' % symbol, '%s_mini_ticker' % symbol, create_table)
     def process(self, msg):
         return [(
             int(msg['E']) / 1000.,   # Event time
@@ -97,8 +145,7 @@ class IndividualSymbolMiniTickerStream(Stream):
         )]
 
 class IndividualSymbolTickerStream(Stream):
-    def __init__(self, symbol):
-        Stream.__init__(self, '%s@ticker' % symbol, '%s_ticker' % symbol)
+    def __init__(self, symbol, create_table=False):
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
             bigquery.SchemaField('price_change', 'FLOAT'),
@@ -122,6 +169,7 @@ class IndividualSymbolTickerStream(Stream):
             bigquery.SchemaField('last_trade_id', 'INTEGER'),
             bigquery.SchemaField('total_num_trades', 'INTEGER')
         ]
+        Stream.__init__(self, '%s@ticker' % symbol, '%s_ticker' % symbol, create_table)
     def process(self, msg):
         return [(
             int(msg['E']) / 1000.,   # Event time
@@ -149,8 +197,7 @@ class IndividualSymbolTickerStream(Stream):
         )]
 
 class PartialBookDepthStream(Stream):
-    def __init__(self, symbol, levels=None):
-        Stream.__init__(self, '%s@depth' % symbol + (str(levels) if levels is not None else ''), '%s_depth' % symbol)
+    def __init__(self, symbol, levels=None, create_table=False):
         self.levels = levels
         self.schema = [
             bigquery.SchemaField('time', 'TIMESTAMP'),
@@ -158,6 +205,7 @@ class PartialBookDepthStream(Stream):
             bigquery.SchemaField('quantity', 'FLOAT'),
             bigquery.SchemaField('is_bid', 'BOOLEAN')
         ]
+        Stream.__init__(self, '%s@depth' % symbol + (str(levels) if levels is not None else ''), '%s_depth' % symbol, create_table)
     def process(self, msg):
         data = []
         bids_key = 'bids' if self.levels is not None else 'b'
@@ -165,17 +213,17 @@ class PartialBookDepthStream(Stream):
         timestamp = time.time()
         for i in range(len(msg[bids_key])): # Bids to be updated
             data += [(
-                timestamp,                # Event time
+                timestamp,                  # Event time
                 msg[bids_key][i][0],        # Price level to be updated
                 msg[bids_key][i][1],        # Quantity
-                True                      # Is bid
+                True                        # Is bid
             )]
         for i in range(len(msg[asks_key])): # Asks to be updated
             data += [(
-                timestamp,                # Event time
+                timestamp,                  # Event time
                 msg[asks_key][i][0],        # Price level to be updated
                 msg[asks_key][i][1],        # Quantity
-                False                     # Is bid
+                False                       # Is bid
             )]
         return data
 
@@ -199,6 +247,6 @@ if __name__ == '__main__':
         TradeStream(symbol),
         IndividualSymbolTickerStream(symbol),
         IndividualSymbolMiniTickerStream(symbol),
-        PartialBookDepthStream(symbol)
+        KlineCandlestickStream(symbol, '1m', create_table=True)
     ])
     manager.start()
